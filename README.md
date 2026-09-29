@@ -244,4 +244,4 @@ print(f"Latency: {result['latency_ms']:.1f} ms")
 
 ## 🛡️ License & Attributions
 - Model weights: Apache-2.0 (DocsaidLab & 7R+ GmbH).
-- Solution code: Enterprise POC Architecture by Antigravity for LOLC Tech.
+- Solution code: Enterprise POC Architecture by Manula Fernando.
