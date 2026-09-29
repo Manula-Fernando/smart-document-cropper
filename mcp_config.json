@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "smart-document-cropper": {
+      "command": "python",
+      "args": ["-m", "src.mcp.server"],
+      "cwd": "d:/AI_Internship_ManulaFernando_LOLC_Tech_2025/02_Project_Notes/smart-document-cropper",
+      "env": {
+        "PYTHONPATH": "d:/AI_Internship_ManulaFernando_LOLC_Tech_2025/02_Project_Notes/smart-document-cropper"
+      }
+    }
+  }
+}
