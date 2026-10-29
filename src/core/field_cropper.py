@@ -33,8 +33,23 @@ for p in TESSERACT_PATHS:
 
 
 def _ensure_image(img_input: Any) -> np.ndarray:
+    """Ensures input is converted to a BGR numpy array, supporting .jfif, .jpg, .png, .webp, .bmp, etc."""
     if isinstance(img_input, (str, Path)):
-        loaded = cv2.imread(str(img_input))
+        p_str = str(img_input)
+        loaded = None
+        try:
+            loaded = cv2.imdecode(np.fromfile(p_str, dtype=np.uint8), cv2.IMREAD_COLOR)
+        except Exception:
+            pass
+        if loaded is None:
+            loaded = cv2.imread(p_str)
+        if loaded is None:
+            try:
+                from PIL import Image
+                pil_img = Image.open(p_str).convert("RGB")
+                loaded = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            except Exception:
+                pass
         if loaded is None:
             raise FileNotFoundError(f"Could not load image from: {img_input}")
         return loaded

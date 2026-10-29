@@ -34,6 +34,9 @@ from src.core.transform import perspective_warp
 from src.core.field_cropper import auto_orient_upright
 
 
+VALID_EXTENSIONS = {".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp", ".tiff", ".tif", ".pjpeg", ".pjp"}
+
+
 def process_and_visualize(
     img_path: Union[str, Path],
     agent: DocumentCropperAgent,
@@ -44,9 +47,10 @@ def process_and_visualize(
 ) -> dict:
     img_path = Path(img_path)
     base_name = img_path.stem
-    img = cv2.imread(str(img_path))
-    if img is None:
-        print(f"❌ Error: Could not read image: {img_path}")
+    try:
+        img = agent._load_image(img_path)
+    except Exception as e:
+        print(f"❌ Error: Could not read image ({e}): {img_path}")
         return {"success": False, "filename": img_path.name}
 
     h, w = img.shape[:2]
@@ -168,21 +172,21 @@ def main():
         if in_p.is_file():
             files_to_process = [in_p]
         elif in_p.is_dir():
-            files_to_process = sorted([p for p in in_p.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
+            files_to_process = sorted([p for p in in_p.glob("*") if p.suffix.lower() in VALID_EXTENSIONS])
         else:
             print(f"❌ Input not found: {args.input}")
             sys.exit(1)
     elif args.all:
-        files_to_process = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
+        files_to_process = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in VALID_EXTENSIONS])
     elif args.sample:
-        all_f = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
+        all_f = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in VALID_EXTENSIONS])
         files_to_process = all_f[:args.sample]
     else:
         # Default: test 03_02_Malshan.jpg and 02_05_Senuri.jpg
         default_files = [data_dir / "03_02_Malshan.jpg", data_dir / "02_05_Senuri.jpg", data_dir / "01_05_Senuri.jpg"]
         files_to_process = [f for f in default_files if f.exists()]
         if not files_to_process:
-            files_to_process = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])[:3]
+            files_to_process = sorted([p for p in data_dir.glob("*") if p.suffix.lower() in VALID_EXTENSIONS])[:3]
 
     print(f"Found {len(files_to_process)} document(s) to process.\n")
 

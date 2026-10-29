@@ -54,7 +54,7 @@ async def health_check():
 
 @app.post("/api/v1/crop", tags=["Cropping"])
 async def crop_document_file(
-    file: UploadFile = File(..., description="Uploaded document image (JPEG, PNG, WebP)"),
+    file: UploadFile = File(..., description="Uploaded document image (JPEG, JFIF, PNG, WebP, BMP, TIFF)"),
     safe_margin_percent: float = Form(0.01, description="Outward margin expansion (0.01 = 1%)"),
     preferred_model: str = Form("auto", description="auto, fastvit, lcnet, deeplab, yolo, classical"),
     return_image_stream: bool = Form(False, description="If true, returns cropped JPEG image binary directly"),

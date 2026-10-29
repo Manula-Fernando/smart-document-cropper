@@ -70,6 +70,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 DATA_DIR = PROJECT_ROOT / "data"
+SUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.jfif', '.png', '.webp', '.bmp', '.tiff', '.tif', '.pjpeg', '.pjp')
+UPLOAD_EXTENSIONS_LIST = ["jpg", "jpeg", "jfif", "png", "webp", "bmp", "tiff", "tif", "pjpeg", "pjp"]
 
 @st.cache_resource
 def get_agent():
@@ -143,18 +145,22 @@ with tab_scan:
     selected_name = "custom_upload"
 
     if input_mode == "Upload Document Image":
-        uploaded_file = st.file_uploader("Upload document (JPEG, PNG, WebP)", type=["jpg", "jpeg", "png", "webp"])
+        uploaded_file = st.file_uploader(
+            "Upload document (JPEG, JFIF, PNG, WebP, BMP, TIFF)",
+            type=UPLOAD_EXTENSIONS_LIST,
+            help="Supports any standard format: .jfif, .jpg, .jpeg, .png, .webp, .bmp, .tiff, etc."
+        )
         if uploaded_file is not None:
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            img_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            raw_bytes = uploaded_file.read()
+            img_bgr = agent._load_image(raw_bytes)
             selected_name = uploaded_file.name
     else:
         if DATA_DIR.exists():
-            data_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+            data_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)]
             sample_pick = st.selectbox("Select document from customer dataset:", data_files, index=0)
             if sample_pick:
                 img_path = DATA_DIR / sample_pick
-                img_bgr = cv2.imread(str(img_path))
+                img_bgr = agent._load_image(img_path)
                 selected_name = sample_pick
         else:
             st.error("Data directory not found.")
@@ -494,8 +500,8 @@ with tab_dataset:
     st.write("Browse through the local dataset of Sri Lankan KYC documents, invoices, ID cards, cheques, and mobile captures.")
     
     if DATA_DIR.exists():
-        files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-        st.info(f"Total documents available: {len(files)} items in `{DATA_DIR}`")
+        files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)]
+        st.info(f"Total documents available: {len(files)} items in `{DATA_DIR}` (supports .jfif, .jpg, .png, .webp, .tiff)")
         
         page_size = 8
         page = st.number_input("Page", min_value=1, max_value=(len(files) // page_size) + 1, value=1)
@@ -506,7 +512,7 @@ with tab_dataset:
         for i, fname in enumerate(page_files):
             col = cols[i % 4]
             fpath = DATA_DIR / fname
-            im = cv2.imread(str(fpath))
+            im = agent._load_image(fpath)
             if im is not None:
                 # Thumbnail
                 h_i, w_i = im.shape[:2]

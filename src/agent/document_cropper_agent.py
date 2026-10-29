@@ -64,7 +64,10 @@ class DocumentCropperAgent:
         logger.info(f"Agent ready in {time.time() - t0:.2f}s")
 
     def _load_image(self, image_input: Union[str, Path, bytes, np.ndarray, Image.Image]) -> np.ndarray:
-        """Helper to convert varied image input types to standard BGR numpy array."""
+        """
+        Helper to convert varied image input types to standard BGR numpy array.
+        Universally supports: .jpg, .jpeg, .jfif, .png, .webp, .bmp, .tiff, .tif, .pjpeg, .pjp, and any PIL/OpenCV format.
+        """
         if isinstance(image_input, (str, Path)):
             path_str = str(image_input)
             if path_str.startswith("data:image"):
@@ -73,8 +76,30 @@ class DocumentCropperAgent:
                 img_bytes = base64.b64decode(base64_data)
                 nparr = np.frombuffer(img_bytes, np.uint8)
                 img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img is None:
+                    try:
+                        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                    except Exception:
+                        img = None
             else:
-                img = cv2.imread(path_str)
+                img = None
+                # Method A: imdecode from np.fromfile (handles unicode/special Windows paths & JFIF)
+                try:
+                    img = cv2.imdecode(np.fromfile(path_str, dtype=np.uint8), cv2.IMREAD_COLOR)
+                except Exception:
+                    pass
+                # Method B: standard imread
+                if img is None:
+                    img = cv2.imread(path_str)
+                # Method C: PIL Image fallback (handles all exotic formats: .jfif, .webp, .bmp, .tiff, etc.)
+                if img is None:
+                    try:
+                        pil_img = Image.open(path_str).convert("RGB")
+                        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                    except Exception:
+                        img = None
+
             if img is None:
                 raise ValueError(f"Could not read image from path: {image_input}")
             return img
@@ -82,6 +107,12 @@ class DocumentCropperAgent:
         elif isinstance(image_input, bytes):
             nparr = np.frombuffer(image_input, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is None:
+                try:
+                    pil_img = Image.open(io.BytesIO(image_input)).convert("RGB")
+                    img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+                except Exception:
+                    img = None
             if img is None:
                 raise ValueError("Could not decode image from bytes.")
             return img

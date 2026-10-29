@@ -393,7 +393,7 @@ def run_benchmarks():
     print("=" * 60)
 
     # Pick representative samples from data
-    all_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    all_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(('.jpg', '.jpeg', '.jfif', '.png', '.webp', '.bmp', '.tiff', '.tif', '.pjpeg', '.pjp'))]
     test_files = [
         '01_02_Senuri.jpg',
         '03_02_Malshan.jpg',
