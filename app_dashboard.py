@@ -95,6 +95,17 @@ model_choice = st.sidebar.selectbox(
     }[x]
 )
 
+workflow_mode = st.sidebar.radio(
+    "System Workflow Mode:",
+    options=["corners_only", "full_pipeline"],
+    format_func=lambda x: {
+        "corners_only": "🎯 Corner Detection & Crop Only (Model Demo)",
+        "full_pipeline": "🚀 Full Enterprise Pipeline (+ Key-Value Extraction)"
+    }[x],
+    index=0,
+    help="Select 'Corner Detection & Crop Only' to evaluate pure layout regression and perspective cropping, or 'Full Enterprise Pipeline' for downstream OCR and semantic grounding."
+)
+
 safe_margin = st.sidebar.slider(
     "Safe Border Expansion Margin (%)",
     min_value=0.0,
@@ -186,22 +197,73 @@ with tab_scan:
 
         # Draw detected quadrilateral polygon for visualization
         vis_img = img_bgr.copy()
+        max_dim = max(h, w)
+        line_thickness = max(3, int(max_dim / 400))
+        circle_radius = max(8, int(max_dim / 150))
+        font_scale = max(0.8, max_dim / 1200.0)
+        font_thickness = max(2, int(max_dim / 600))
         pts_int = corners.astype(np.int32)
-        cv2.polylines(vis_img, [pts_int], isClosed=True, color=(0, 255, 0), thickness=max(2, int(max(h, w) / 500)))
+        cv2.polylines(vis_img, [pts_int], isClosed=True, color=(0, 255, 0), thickness=line_thickness)
+        
+        corner_labels = ["1: TL", "2: TR", "3: BR", "4: BL"]
         for i, p in enumerate(pts_int):
-            cv2.circle(vis_img, tuple(p), max(4, int(max(h, w) / 200)), (0, 0, 255), -1)
+            cv2.circle(vis_img, tuple(p), circle_radius, (0, 0, 255), -1)
+            cv2.circle(vis_img, tuple(p), max(2, int(circle_radius / 3)), (255, 255, 255), -1)
+            coord_str = f"{corner_labels[i]} ({p[0]}, {p[1]})"
+            tx = p[0] + 15 if p[0] < w - 220 else p[0] - 220
+            ty = p[1] - 15 if p[1] > 40 else p[1] + 35
+            cv2.putText(vis_img, coord_str, (int(tx), int(ty)), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 0, 0), font_thickness + 2)
+            cv2.putText(vis_img, coord_str, (int(tx), int(ty)), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), font_thickness)
+
+        banner_text = f"Route: {res['pipeline_stage']} | Score: {res['geometric_score']*100:.1f}% | Latency: {res['latency_ms']:.1f}ms"
+        banner_h = int(60 * (max_dim / 1000.0))
+        cv2.rectangle(vis_img, (0, 0), (w, max(50, banner_h)), (20, 20, 20), -1)
+        cv2.putText(vis_img, banner_text, (20, int(max(35, banner_h * 0.7))), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), font_thickness)
+
+        # Automatically save visual corner overlay and cropped output to eval_results/
+        eval_dir = PROJECT_ROOT / "eval_results"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        stem_name = Path(selected_name).stem
+        corners_save_path = eval_dir / f"{stem_name}_detected_corners.jpg"
+        crop_save_path = eval_dir / f"{stem_name}_cropped.jpg"
+        cv2.imwrite(str(corners_save_path), vis_img)
+        cv2.imwrite(str(crop_save_path), upright_cropped)
 
         # Layout columns
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("1. Original Image & Detected Layout")
             vis_rgb = cv2.cvtColor(vis_img, cv2.COLOR_BGR2RGB)
-            st.image(vis_rgb, use_container_width=True, caption=f"Original: {w}x{h} px | Corners Detected")
+            st.image(vis_rgb, use_container_width=True, caption=f"Original: {w}x{h} px | {corners_save_path.name}")
 
         with col2:
             st.subheader("2. Perspective-Rectified & Upright Document")
             crop_rgb = cv2.cvtColor(upright_cropped, cv2.COLOR_BGR2RGB)
-            st.image(crop_rgb, use_container_width=True, caption=f"Rectified: {upright_cropped.shape[1]}x{upright_cropped.shape[0]} px | Deskewed Planar Rectification")
+            st.image(crop_rgb, use_container_width=True, caption=f"Rectified: {upright_cropped.shape[1]}x{upright_cropped.shape[0]} px | {crop_save_path.name}")
+
+        # Download buttons
+        _, enc_corners = cv2.imencode(".jpg", vis_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        _, enc_crop = cv2.imencode(".jpg", upright_cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        
+        col_d1, col_d2, col_d3 = st.columns([3, 3, 4])
+        with col_d1:
+            st.download_button(
+                label="📥 Download Detected Corners Image",
+                data=enc_corners.tobytes(),
+                file_name=f"{stem_name}_detected_corners.jpg",
+                mime="image/jpeg",
+                use_container_width=True
+            )
+        with col_d2:
+            st.download_button(
+                label="📥 Download Cropped Document",
+                data=enc_crop.tobytes(),
+                file_name=f"{stem_name}_cropped.jpg",
+                mime="image/jpeg",
+                use_container_width=True
+            )
+        with col_d3:
+            st.caption(f"💾 Files automatically saved to `eval_results/{stem_name}_detected_corners.jpg` and `eval_results/{stem_name}_cropped.jpg`")
 
         # Metadata Metrics Cards
         st.markdown("---")
@@ -221,206 +283,210 @@ with tab_scan:
         q_cols[2].metric("Mean Brightness", f"{res['quality_assessment']['mean_brightness']:.1f} / 255")
         q_cols[3].metric("Quality Status", res['quality_assessment']['quality_status'].split()[0])
 
-        # Download buttons
-        _, enc_jpg = cv2.imencode(".jpg", upright_cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        col_d1, col_d2 = st.columns([1, 4])
-        with col_d1:
-            st.download_button(
-                label="📥 Download Cropped JPEG",
-                data=enc_jpg.tobytes(),
-                file_name=f"{Path(selected_name).stem}_cropped.jpg",
-                mime="image/jpeg"
-            )
-        with col_d2:
+        # Precise Coordinates Table
+        st.markdown("#### 📍 Detected Quadrilateral Corner Coordinates")
+        coord_rows = [
+            {"Corner Point": "1: Top-Left (TL)", "Pixel Coordinate (X, Y)": f"({corners[0][0]:.1f}, {corners[0][1]:.1f})", "Normalized (X, Y)": f"({corners[0][0]/w:.4f}, {corners[0][1]/h:.4f})"},
+            {"Corner Point": "2: Top-Right (TR)", "Pixel Coordinate (X, Y)": f"({corners[1][0]:.1f}, {corners[1][1]:.1f})", "Normalized (X, Y)": f"({corners[1][0]/w:.4f}, {corners[1][1]/h:.4f})"},
+            {"Corner Point": "3: Bottom-Right (BR)", "Pixel Coordinate (X, Y)": f"({corners[2][0]:.1f}, {corners[2][1]:.1f})", "Normalized (X, Y)": f"({corners[2][0]/w:.4f}, {corners[2][1]/h:.4f})"},
+            {"Corner Point": "4: Bottom-Left (BL)", "Pixel Coordinate (X, Y)": f"({corners[3][0]:.1f}, {corners[3][1]:.1f})", "Normalized (X, Y)": f"({corners[3][0]/w:.4f}, {corners[3][1]/h:.4f})"},
+        ]
+        st.table(coord_rows)
+
+        with st.expander("🔍 View Raw Agent JSON Telemetry"):
             st.json(res, expanded=False)
 
-        # ----------------- Semantic Field Cropping & Snip-and-Snap Section ----------------- #
-        st.markdown("---")
-        st.subheader("🎯 Intelligent Semantic Field Detection & 'Snip-and-Snap' Tool")
-        st.markdown("""
-        Micro-crop specific fields, entities, or regions from this document (e.g. *Pharmacy Name*, *Telephone*, *Address*, *Handwritten Items*, *Total*).
-        Cropped field snippets are formatted for direct ingestion into your **Intelligent Data Extractor**.
-        """)
-
-        # Quick field selector buttons
-        st.markdown("**Quick Preset Fields (One-Click Auto Grounding):**")
-        qb1, qb2, qb3, qb4, qb5, qb6 = st.columns(6)
-        preset_query = None
-        if qb1.button("🏥 Hospital / Pharmacy", use_container_width=True):
-            preset_query = "hospital"
-        if qb2.button("👤 Patient / Name", use_container_width=True):
-            preset_query = "patient"
-        if qb3.button("👨‍⚕️ Doctor / Consultant", use_container_width=True):
-            preset_query = "doctor"
-        if qb4.button("📞 Telephone / Phone", use_container_width=True):
-            preset_query = "telephone"
-        if qb5.button("💰 Total / Fees", use_container_width=True):
-            preset_query = "total"
-        if qb6.button("📅 Invoice / Date", use_container_width=True):
-            preset_query = "date"
-
-        # Document enhancement controls
-        enh_col1, enh_col2 = st.columns([1, 1])
-        with enh_col1:
-            use_illum_norm = st.checkbox("⚡ Flat-Field Shadow Normalization (Removes dark shadows & maximizes faint ink contrast)", value=True, help="Divides by background surface to remove dark shadows and equalize contrast across faint dot-matrix or thermal receipts.")
-
-        extraction_mode = st.radio("Choose Extraction Mode:", [
-            "Interactive 'Snip & Snap' Square (Windows Snip Cursor Experience)",
-            "Natural Language Prompt / Field Query"
-        ], horizontal=True)
-
-        if extraction_mode == "Interactive 'Snip & Snap' Square (Windows Snip Cursor Experience)":
+        if workflow_mode == "full_pipeline":
+            # ----------------- Semantic Field Cropping & Snip-and-Snap Section ----------------- #
+            st.markdown("---")
+            st.subheader("🎯 Intelligent Semantic Field Detection & 'Snip-and-Snap' Tool")
             st.markdown("""
-            <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
-                <strong>✂️ Cursor-Drawn Bounding Box:</strong> Click and drag the box handles directly on the document image below with your cursor to select any area (handwritten items, patient name, doctor, fees, pharmacy details, or total amount).
-            </div>
-            """, unsafe_allow_html=True)
+            Micro-crop specific fields, entities, or regions from this document (e.g. *Pharmacy Name*, *Telephone*, *Address*, *Handwritten Items*, *Total*).
+            Cropped field snippets are formatted for direct ingestion into your **Intelligent Data Extractor**.
+            """)
 
-            snip_c1, snip_c2 = st.columns([1, 1])
-            with snip_c1:
-                snap_enabled = st.checkbox("⚡ Auto-Snap to Text / Ink (Snaps box borders to exact ink boundaries)", value=True, help="Otsu-based ink boundary snapping guarantees characters are never cut in half.")
-            with snip_c2:
-                box_color_choice = st.selectbox("Snip Box Highlight Color:", ["#00FF66 (Neon Green)", "#3B82F6 (Blue)", "#FF007F (Neon Pink)", "#FF9900 (Orange)"], index=0)
-                stroke_color = box_color_choice.split()[0]
+            # Quick field selector buttons
+            st.markdown("**Quick Preset Fields (One-Click Auto Grounding):**")
+            qb1, qb2, qb3, qb4, qb5, qb6 = st.columns(6)
+            preset_query = None
+            if qb1.button("🏥 Hospital / Pharmacy", use_container_width=True):
+                preset_query = "hospital"
+            if qb2.button("👤 Patient / Name", use_container_width=True):
+                preset_query = "patient"
+            if qb3.button("👨‍⚕️ Doctor / Consultant", use_container_width=True):
+                preset_query = "doctor"
+            if qb4.button("📞 Telephone / Phone", use_container_width=True):
+                preset_query = "telephone"
+            if qb5.button("💰 Total / Fees", use_container_width=True):
+                preset_query = "total"
+            if qb6.button("📅 Invoice / Date", use_container_width=True):
+                preset_query = "date"
 
-            pil_doc = Image.fromarray(cv2.cvtColor(upright_cropped, cv2.COLOR_BGR2RGB))
+            # Document enhancement controls
+            enh_col1, enh_col2 = st.columns([1, 1])
+            with enh_col1:
+                use_illum_norm = st.checkbox("⚡ Flat-Field Shadow Normalization (Removes dark shadows & maximizes faint ink contrast)", value=True, help="Divides by background surface to remove dark shadows and equalize contrast across faint dot-matrix or thermal receipts.")
 
-            # Render st_cropper with interactive cursor handles
-            st.markdown("👇 **Drag cursor box over target area:**")
-            cropped_pil, box_coords = st_cropper(
-                pil_doc,
-                realtime_update=True,
-                box_color=stroke_color,
-                aspect_ratio=None,
-                return_type='both',
-                stroke_width=2,
-                key=f"snip_cropper_{selected_name}"
-            )
+            extraction_mode = st.radio("Choose Extraction Mode:", [
+                "Interactive 'Snip & Snap' Square (Windows Snip Cursor Experience)",
+                "Natural Language Prompt / Field Query"
+            ], horizontal=True)
 
-            # Process coordinates and display snapped snippet
-            if box_coords:
-                orig_x = int(box_coords['left'])
-                orig_y = int(box_coords['top'])
-                orig_w = int(box_coords['width'])
-                orig_h = int(box_coords['height'])
+            if extraction_mode == "Interactive 'Snip & Snap' Square (Windows Snip Cursor Experience)":
+                st.markdown("""
+                <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                    <strong>✂️ Cursor-Drawn Bounding Box:</strong> Click and drag the box handles directly on the document image below with your cursor to select any area (handwritten items, patient name, doctor, fees, pharmacy details, or total amount).
+                </div>
+                """, unsafe_allow_html=True)
 
-                dh, dw = upright_cropped.shape[:2]
+                snip_c1, snip_c2 = st.columns([1, 1])
+                with snip_c1:
+                    snap_enabled = st.checkbox("⚡ Auto-Snap to Text / Ink (Snaps box borders to exact ink boundaries)", value=True, help="Otsu-based ink boundary snapping guarantees characters are never cut in half.")
+                with snip_c2:
+                    box_color_choice = st.selectbox("Snip Box Highlight Color:", ["#00FF66 (Neon Green)", "#3B82F6 (Blue)", "#FF007F (Neon Pink)", "#FF9900 (Orange)"], index=0)
+                    stroke_color = box_color_choice.split()[0]
 
-                if snap_enabled:
-                    sx, sy, sw, sh = snap_box_to_text(upright_cropped, orig_x, orig_y, orig_w, orig_h, padding=10)
-                else:
-                    sx, sy, sw, sh = orig_x, orig_y, orig_w, orig_h
+                pil_doc = Image.fromarray(cv2.cvtColor(upright_cropped, cv2.COLOR_BGR2RGB))
 
-                # Boundary safety clamp
-                sx = max(0, min(dw - 1, sx))
-                sy = max(0, min(dh - 1, sy))
-                sw = max(1, min(dw - sx, sw))
-                sh = max(1, min(dh - sy, sh))
+                # Render st_cropper with interactive cursor handles
+                st.markdown("👇 **Drag cursor box over target area:**")
+                cropped_pil, box_coords = st_cropper(
+                    pil_doc,
+                    realtime_update=True,
+                    box_color=stroke_color,
+                    aspect_ratio=None,
+                    return_type='both',
+                    stroke_width=2,
+                    key=f"snip_cropper_{selected_name}"
+                )
 
-                snapped_crop = upright_cropped[sy:sy+sh, sx:sx+sw]
+                # Process coordinates and display snapped snippet
+                if box_coords:
+                    orig_x = int(box_coords['left'])
+                    orig_y = int(box_coords['top'])
+                    orig_w = int(box_coords['width'])
+                    orig_h = int(box_coords['height'])
 
-                st.markdown("---")
-                res_c1, res_c2 = st.columns([1, 2])
-                with res_c1:
-                    st.subheader("Isolated Snipped Artifact")
-                    if snapped_crop.size > 0:
-                        st.image(cv2.cvtColor(snapped_crop, cv2.COLOR_BGR2RGB), caption=f"Snapped Crop ({sw}x{sh} px)", use_container_width=True)
-                with res_c2:
-                    st.subheader("Field Metadata & Extraction")
-                    import pytesseract
-                    from src.core.field_cropper import normalize_illumination
-                    # Live OCR on the micro-crop with shadow normalization
-                    try:
-                        clean_crop = normalize_illumination(snapped_crop) if use_illum_norm else snapped_crop
-                        extracted_snip_text = pytesseract.image_to_string(clean_crop, config='--psm 6').strip()
-                        if not extracted_snip_text:
-                            extracted_snip_text = pytesseract.image_to_string(snapped_crop).strip()
-                    except Exception:
-                        extracted_snip_text = ""
+                    dh, dw = upright_cropped.shape[:2]
 
-                    st.markdown(f"""
-                    - 📐 **Cursor Drawn Box:** `[x={orig_x}, y={orig_y}, w={orig_w}, h={orig_h}]`
-                    - ⚡ **Ink Snapped Box:** `[x={sx}, y={sy}, w={sw}, h={sh}]`
-                    - 📍 **Normalized Coords:** `[x={sx/dw:.4f}, y={sy/dh:.4f}, w={sw/dw:.4f}, h={sh/dh:.4f}]`
-                    - 📝 **Live OCR Content:** `{extracted_snip_text if extracted_snip_text else '[Handwritten ink or faint graphical region]'}`
-                    - ⏱️ **Timestamp:** `{datetime.now().isoformat()}`
-                    """)
+                    if snap_enabled:
+                        sx, sy, sw, sh = snap_box_to_text(upright_cropped, orig_x, orig_y, orig_w, orig_h, padding=10)
+                    else:
+                        sx, sy, sw, sh = orig_x, orig_y, orig_w, orig_h
 
-                    if st.button("🚀 Pass Snipped Field to Intelligent Data Extractor", key="bridge_snip_btn"):
-                        st.success("Successfully handed off to Intelligent Data Extractor pipeline!")
-                        st.json({
-                            "status": "200_SUCCESS",
-                            "source_document": selected_name,
-                            "crop_dimensions": [sw, sh],
-                            "spatial_coordinates": [sx, sy, sw, sh],
-                            "normalized_coordinates": [round(sx/dw, 4), round(sy/dh, 4), round(sw/dw, 4), round(sh/dh, 4)],
-                            "digitalized_payload": {
-                                "extracted_text": extracted_snip_text,
-                                "confidence": 0.95,
-                                "target_pipeline": "Enterprise OCR & ERP Ingestion Engine"
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        })
+                    # Boundary safety clamp
+                    sx = max(0, min(dw - 1, sx))
+                    sy = max(0, min(dh - 1, sy))
+                    sw = max(1, min(dw - sx, sw))
+                    sh = max(1, min(dh - sy, sh))
 
-        else:
-            # Natural Language Prompt / Field Query
-            f_col1, f_col2, f_col3 = st.columns([3, 1, 1])
-            with f_col1:
-                default_val = preset_query if preset_query else "patient"
-                query_input = st.text_input("Enter field concept or label to locate & crop (e.g. 'Patient', 'Total', 'Doctor', 'Date', 'Phone'):", value=default_val)
-            with f_col2:
-                is_kv = st.checkbox("Key-Value Pair (search value next to label)", value=True, help="When checked, extracts the value next to the label (e.g. 'Patient Name:' -> 'MR H. DARSHANA DE ZOYSA').")
-            with f_col3:
-                st.write("")
-                st.write("")
-                extract_btn = st.button("🔍 Ground & Crop Field", type="primary")
+                    snapped_crop = upright_cropped[sy:sy+sh, sx:sx+sw]
 
-            if (extract_btn or preset_query) and query_input:
-                fc = SemanticFieldCropper()
-                with st.spinner(f"Grounding '{query_input}' with illumination enhancement and micro-cropping..."):
-                    field_res = fc.query_and_crop(
-                        upright_cropped,
-                        query=query_input,
-                        is_key_value=is_kv,
-                        pre_oriented=True,
-                        output_dir="eval_results/semantic_crops"
-                    )
+                    st.markdown("---")
+                    res_c1, res_c2 = st.columns([1, 2])
+                    with res_c1:
+                        st.subheader("Isolated Snipped Artifact")
+                        if snapped_crop.size > 0:
+                            st.image(cv2.cvtColor(snapped_crop, cv2.COLOR_BGR2RGB), caption=f"Snapped Crop ({sw}x{sh} px)", use_container_width=True)
+                    with res_c2:
+                        st.subheader("Field Metadata & Extraction")
+                        import pytesseract
+                        from src.core.field_cropper import normalize_illumination
+                        # Live OCR on the micro-crop with shadow normalization
+                        try:
+                            clean_crop = normalize_illumination(snapped_crop) if use_illum_norm else snapped_crop
+                            extracted_snip_text = pytesseract.image_to_string(clean_crop, config='--psm 6').strip()
+                            if not extracted_snip_text:
+                                extracted_snip_text = pytesseract.image_to_string(snapped_crop).strip()
+                        except Exception:
+                            extracted_snip_text = ""
 
-                if field_res.get("success"):
-                    st.success(f"Successfully grounded concept: **{field_res.get('matched_concept')}**!")
-                    fc1, fc2 = st.columns([1, 2])
-                    with fc1:
-                        if field_res.get("cropped_artifact_path") and os.path.exists(field_res["cropped_artifact_path"]):
-                            f_img = cv2.imread(field_res["cropped_artifact_path"])
-                            f_rgb = cv2.cvtColor(f_img, cv2.COLOR_BGR2RGB)
-                            st.image(f_rgb, caption=f"Micro-crop ({f_img.shape[1]}x{f_img.shape[0]} px)", use_container_width=True)
-                    with fc2:
-                        label_info = f"- 🏷️ **Label Found:** `{field_res.get('label_context')}`\n" if field_res.get('label_context') else ""
                         st.markdown(f"""
-                        - 🏷️ **Detected Concept:** `{field_res.get('matched_concept')}`
-                        {label_info}- 📝 **Extracted Value / Text:** `{field_res.get('text_extracted')}`
-                        - 📍 **Where (Spatial Coordinates):** `x={field_res['where_spatial']['bbox_pixel'][0]}, y={field_res['where_spatial']['bbox_pixel'][1]}, w={field_res['where_spatial']['bbox_pixel'][2]}, h={field_res['where_spatial']['bbox_pixel'][3]}`
-                        - ⏱️ **When (Temporal Audit):** `{field_res['when_temporal']['extracted_at']}`
+                        - 📐 **Cursor Drawn Box:** `[x={orig_x}, y={orig_y}, w={orig_w}, h={orig_h}]`
+                        - ⚡ **Ink Snapped Box:** `[x={sx}, y={sy}, w={sw}, h={sh}]`
+                        - 📍 **Normalized Coords:** `[x={sx/dw:.4f}, y={sy/dh:.4f}, w={sw/dw:.4f}, h={sh/dh:.4f}]`
+                        - 📝 **Live OCR Content:** `{extracted_snip_text if extracted_snip_text else '[Handwritten ink or faint graphical region]'}`
+                        - ⏱️ **Timestamp:** `{datetime.now().isoformat()}`
                         """)
-                        
-                        # Enterprise Bridge simulation
-                        if st.button("🚀 Pass to Intelligent Data Extractor", key="bridge_btn_1"):
-                            st.info("Sending micro-cropped artifact to Intelligent Data Extractor API...")
+
+                        if st.button("🚀 Pass Snipped Field to Intelligent Data Extractor", key="bridge_snip_btn"):
+                            st.success("Successfully handed off to Intelligent Data Extractor pipeline!")
                             st.json({
                                 "status": "200_SUCCESS",
-                                "extractor_endpoint": "https://api.enterprise.internal/v1/extract-document-data",
-                                "field_name": field_res.get('matched_concept'),
+                                "source_document": selected_name,
+                                "crop_dimensions": [sw, sh],
+                                "spatial_coordinates": [sx, sy, sw, sh],
+                                "normalized_coordinates": [round(sx/dw, 4), round(sy/dh, 4), round(sw/dw, 4), round(sh/dh, 4)],
                                 "digitalized_payload": {
-                                    "label": field_res.get('label_context'),
-                                    "clean_value": field_res.get('text_extracted'),
-                                    "field_type": field_res.get('field_type'),
-                                    "confidence": field_res.get('confidence_score', 0.95),
-                                    "bounding_box": field_res['where_spatial']['bbox_pixel']
+                                    "extracted_text": extracted_snip_text,
+                                    "confidence": 0.95,
+                                    "target_pipeline": "Enterprise OCR & ERP Ingestion Engine"
                                 },
                                 "timestamp": datetime.now().isoformat()
                             })
-                else:
-                    st.warning(f"Could not locate '{query_input}'. {field_res.get('message', 'Try selecting one of the Quick Preset buttons above.')}")
+
+            else:
+                # Natural Language Prompt / Field Query
+                f_col1, f_col2, f_col3 = st.columns([3, 1, 1])
+                with f_col1:
+                    default_val = preset_query if preset_query else "patient"
+                    query_input = st.text_input("Enter field concept or label to locate & crop (e.g. 'Patient', 'Total', 'Doctor', 'Date', 'Phone'):", value=default_val)
+                with f_col2:
+                    is_kv = st.checkbox("Key-Value Pair (search value next to label)", value=True, help="When checked, extracts the value next to the label (e.g. 'Patient Name:' -> 'MR H. DARSHANA DE ZOYSA').")
+                with f_col3:
+                    st.write("")
+                    st.write("")
+                    extract_btn = st.button("🔍 Ground & Crop Field", type="primary")
+
+                if (extract_btn or preset_query) and query_input:
+                    fc = SemanticFieldCropper()
+                    with st.spinner(f"Grounding '{query_input}' with illumination enhancement and micro-cropping..."):
+                        field_res = fc.query_and_crop(
+                            upright_cropped,
+                            query=query_input,
+                            is_key_value=is_kv,
+                            pre_oriented=True,
+                            output_dir="eval_results/semantic_crops"
+                        )
+
+                    if field_res.get("success"):
+                        st.success(f"Successfully grounded concept: **{field_res.get('matched_concept')}**!")
+                        fc1, fc2 = st.columns([1, 2])
+                        with fc1:
+                            if field_res.get("cropped_artifact_path") and os.path.exists(field_res["cropped_artifact_path"]):
+                                f_img = cv2.imread(field_res["cropped_artifact_path"])
+                                f_rgb = cv2.cvtColor(f_img, cv2.COLOR_BGR2RGB)
+                                st.image(f_rgb, caption=f"Micro-crop ({f_img.shape[1]}x{f_img.shape[0]} px)", use_container_width=True)
+                        with fc2:
+                            label_info = f"- 🏷️ **Label Found:** `{field_res.get('label_context')}`\n" if field_res.get('label_context') else ""
+                            st.markdown(f"""
+                            - 🏷️ **Detected Concept:** `{field_res.get('matched_concept')}`
+                            {label_info}- 📝 **Extracted Value / Text:** `{field_res.get('text_extracted')}`
+                            - 📍 **Where (Spatial Coordinates):** `x={field_res['where_spatial']['bbox_pixel'][0]}, y={field_res['where_spatial']['bbox_pixel'][1]}, w={field_res['where_spatial']['bbox_pixel'][2]}, h={field_res['where_spatial']['bbox_pixel'][3]}`
+                            - ⏱️ **When (Temporal Audit):** `{field_res['when_temporal']['extracted_at']}`
+                            """)
+                            
+                            # Enterprise Bridge simulation
+                            if st.button("🚀 Pass to Intelligent Data Extractor", key="bridge_btn_1"):
+                                st.info("Sending micro-cropped artifact to Intelligent Data Extractor API...")
+                                st.json({
+                                    "status": "200_SUCCESS",
+                                    "extractor_endpoint": "https://api.enterprise.internal/v1/extract-document-data",
+                                    "field_name": field_res.get('matched_concept'),
+                                    "digitalized_payload": {
+                                        "label": field_res.get('label_context'),
+                                        "clean_value": field_res.get('text_extracted'),
+                                        "field_type": field_res.get('field_type'),
+                                        "confidence": field_res.get('confidence_score', 0.95),
+                                        "bounding_box": field_res['where_spatial']['bbox_pixel']
+                                    },
+                                    "timestamp": datetime.now().isoformat()
+                                })
+                    else:
+                        st.warning(f"Could not locate '{query_input}'. {field_res.get('message', 'Try selecting one of the Quick Preset buttons above.')}")
+        else:
+            st.markdown("---")
+            st.info("💡 **Demonstration Note:** Currently in **Corner Detection & Crop Only Mode**. The exact 4 quadrilateral corners, polygon overlay, and perspective-rectified crop are displayed above. To test natural language field micro-cropping or the interactive cursor 'Snip & Snap' tool, select **'🚀 Full Enterprise Pipeline'** in the sidebar configuration.")
 
 # ----------------- TAB 2: Dataset Explorer ----------------- #
 with tab_dataset:
