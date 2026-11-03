@@ -117,101 +117,13 @@ def check_quad_validity(corners: Optional[np.ndarray], img_w: int, img_h: int) -
 
 def refine_quadrilateral_geometry(corners: np.ndarray, img_w: int, img_h: int) -> np.ndarray:
     """
-    Perspective Parallelism & Quad Consistency Regularizer.
+    Deprecated / No-op: Returns corners directly.
     
-    Corrects corner truncation / clipping caused by neural network heatmap bias
-    (such as snapping prematurely to prominent horizontal handwriting, table lines, or paper tears).
-    
-    Enforces perspective quadrilateral consistency:
-    When one pair of opposite edges (e.g. left and right) are nearly parallel under perspective projection,
-    their lengths must scale in proportion to the opposite pair (top and bottom).
-    If an individual corner is prematurely truncated (causing opposite edge lengths to diverge by >6%),
-    extrapolates the truncated vertex to match the physical perspective trapezoid/parallelogram.
+    Neural regressors (FastViT-SA24, LCNet100, DeepLabV3) accurately model real-world
+    perspective foreshortening where opposite edges naturally differ in pixel length.
+    Artificial parallelogram extrapolation causes corners to be extended into the table/background.
     """
-    pts = order_corners(corners).copy().astype(np.float32)
-    tl, tr, br, bl = pts[0], pts[1], pts[2], pts[3]
-
-    v_top = tr - tl
-    v_bottom = br - bl
-    v_left = bl - tl
-    v_right = br - tr
-
-    l_top = float(np.linalg.norm(v_top))
-    l_bottom = float(np.linalg.norm(v_bottom))
-    l_left = float(np.linalg.norm(v_left))
-    l_right = float(np.linalg.norm(v_right))
-
-    if min(l_top, l_bottom, l_left, l_right) < 30.0:
-        return pts
-
-    # Angular divergence between opposite edges (degrees)
-    cos_lr = np.clip(np.dot(v_left, v_right) / (l_left * l_right + 1e-6), -1.0, 1.0)
-    angle_lr_deg = float(np.degrees(np.arccos(cos_lr)))
-
-    cos_tb = np.clip(np.dot(v_top, v_bottom) / (l_top * l_bottom + 1e-6), -1.0, 1.0)
-    angle_tb_deg = float(np.degrees(np.arccos(cos_tb)))
-
-    ratio_lr = min(l_left, l_right) / max(l_left, l_right + 1e-6)
-    ratio_tb = min(l_top, l_bottom) / max(l_top, l_bottom + 1e-6)
-
-    candidate = pts.copy()
-
-    # 1. Check Vertical Edge Amputation (Disparity between Left and Right edges)
-    # When top and bottom edges are roughly parallel (angle divergence < 8 deg) and similar in length,
-    # left and right edges should have matching perspective lengths.
-    if ratio_tb > 0.85 and angle_lr_deg < 6.0 and ratio_lr < 0.94:
-        if l_left < l_right:
-            # TL is truncated downwards! Extrapolate TL upwards from BL using v_right
-            tl_new = bl - v_right * (l_top / max(l_bottom, 1e-6))
-            tl_new[0] = np.clip(tl_new[0], 0, img_w - 1)
-            tl_new[1] = np.clip(tl_new[1], 0, img_h - 1)
-            candidate[0] = tl_new
-        else:
-            # TR is truncated downwards! Extrapolate TR upwards from BR using v_left
-            tr_new = br - v_left * (l_top / max(l_bottom, 1e-6))
-            tr_new[0] = np.clip(tr_new[0], 0, img_w - 1)
-            tr_new[1] = np.clip(tr_new[1], 0, img_h - 1)
-            candidate[1] = tr_new
-
-    # 2. Check Horizontal Edge Amputation (Disparity between Top and Bottom edges)
-    c_v_top = candidate[1] - candidate[0]
-    c_v_bottom = candidate[2] - candidate[3]
-    c_v_left = candidate[3] - candidate[0]
-    c_v_right = candidate[2] - candidate[1]
-    c_l_top = float(np.linalg.norm(c_v_top))
-    c_l_bottom = float(np.linalg.norm(c_v_bottom))
-    c_l_left = float(np.linalg.norm(c_v_left))
-    c_l_right = float(np.linalg.norm(c_v_right))
-
-    cos_tb2 = np.clip(np.dot(c_v_top, c_v_bottom) / (c_l_top * c_l_bottom + 1e-6), -1.0, 1.0)
-    c_angle_tb = float(np.degrees(np.arccos(cos_tb2)))
-    cos_lr2 = np.clip(np.dot(c_v_left, c_v_right) / (c_l_left * c_l_right + 1e-6), -1.0, 1.0)
-    c_angle_lr = float(np.degrees(np.arccos(cos_lr2)))
-
-    c_ratio_lr = min(c_l_left, c_l_right) / max(c_l_left, c_l_right + 1e-6)
-    c_ratio_tb = min(c_l_top, c_l_bottom) / max(c_l_top, c_l_bottom + 1e-6)
-
-    if c_ratio_lr > 0.85 and c_angle_tb < 6.0 and c_ratio_tb < 0.94:
-        if c_l_top < c_l_bottom:
-            tr_new = candidate[0] + c_v_bottom * (c_l_right / max(c_l_left, 1e-6))
-            tr_new[0] = np.clip(tr_new[0], 0, img_w - 1)
-            tr_new[1] = np.clip(tr_new[1], 0, img_h - 1)
-            candidate[1] = tr_new
-        elif c_l_bottom < c_l_top:
-            br_new = candidate[3] + c_v_top * (c_l_right / max(c_l_left, 1e-6))
-            br_new[0] = np.clip(br_new[0], 0, img_w - 1)
-            br_new[1] = np.clip(br_new[1], 0, img_h - 1)
-            candidate[2] = br_new
-
-    # Validate candidate quadrilateral
-    m_cand = check_quad_validity(candidate, img_w, img_h)
-    m_orig = check_quad_validity(pts, img_w, img_h)
-
-    # Accept refinement if convex, valid, and maintains high geometric score
-    if m_cand["valid"] and m_cand["score"] >= (m_orig.get("score", 0.0) - 0.05):
-        return candidate
-
-    return pts
+    return order_corners(corners).astype(np.float32)
 
 
 class FastVitSA24Detector:

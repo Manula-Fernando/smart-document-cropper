@@ -50,12 +50,7 @@ class EnterpriseHybridDetector:
         w: int,
         h: int
     ) -> Tuple[np.ndarray, str, Dict[str, Any]]:
-        """Regularizes quadrilateral perspective geometry and validates result."""
-        refined = refine_quadrilateral_geometry(corners, w, h)
-        if not np.allclose(refined, corners, atol=1.0):
-            corners = refined
-            metrics = check_quad_validity(corners, w, h)
-            logger.info(f"Refined quadrilateral perspective geometry for stage '{stage}' (new score {metrics.get('score', 0):.2f}).")
+        """Returns validated corners directly without distorting perspective foreshortening."""
         return corners, stage, metrics
 
     def detect(self, img: np.ndarray, preferred_model: str = "auto") -> Tuple[np.ndarray, str, Dict[str, Any]]:
