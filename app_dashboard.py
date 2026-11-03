@@ -70,6 +70,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 DATA_DIR = PROJECT_ROOT / "data"
+JANUKI_DIR = PROJECT_ROOT / "januki test"
 SUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.jfif', '.png', '.webp', '.bmp', '.tiff', '.tif', '.pjpeg', '.pjp')
 UPLOAD_EXTENSIONS_LIST = ["jpg", "jpeg", "jfif", "png", "webp", "bmp", "tiff", "tif", "pjpeg", "pjp"]
 
@@ -112,7 +113,7 @@ safe_margin = st.sidebar.slider(
     "Safe Border Expansion Margin (%)",
     min_value=0.0,
     max_value=5.0,
-    value=1.0,
+    value=2.0,
     step=0.5,
     help="Expands the detected boundary outward slightly to ensure outer stamps, borders, and signatures are preserved."
 ) / 100.0
@@ -155,15 +156,28 @@ with tab_scan:
             img_bgr = agent._load_image(raw_bytes)
             selected_name = uploaded_file.name
     else:
+        folder_options = {}
         if DATA_DIR.exists():
-            data_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)]
-            sample_pick = st.selectbox("Select document from customer dataset:", data_files, index=0)
+            folder_options["Standard Dataset (data/)"] = DATA_DIR
+        if JANUKI_DIR.exists():
+            folder_options["Januki Test Bills (januki test/)"] = JANUKI_DIR
+        
+        chosen_dir = DATA_DIR
+        if len(folder_options) > 1:
+            chosen_label = st.radio("Choose Dataset Folder:", list(folder_options.keys()), horizontal=True)
+            chosen_dir = folder_options[chosen_label]
+        elif folder_options:
+            chosen_dir = list(folder_options.values())[0]
+
+        if chosen_dir.exists():
+            data_files = [f for f in os.listdir(chosen_dir) if f.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)]
+            sample_pick = st.selectbox("Select document:", data_files, index=0)
             if sample_pick:
-                img_path = DATA_DIR / sample_pick
+                img_path = chosen_dir / sample_pick
                 img_bgr = agent._load_image(img_path)
                 selected_name = sample_pick
         else:
-            st.error("Data directory not found.")
+            st.error("Selected dataset directory not found.")
 
     if img_bgr is not None:
         h, w = img_bgr.shape[:2]

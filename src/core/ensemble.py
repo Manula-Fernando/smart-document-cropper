@@ -72,13 +72,42 @@ class EnterpriseHybridDetector:
             return corners, "Classical-CV (Explicit)", check_quad_validity(corners, w, h)
 
         # Tier 1: Primary SOTA Transformer Heatmap Regressor (FastViT-SA24)
+        fastvit_corners = None
+        fastvit_metrics = None
         try:
-            corners = self.fastvit.detect(img)
-            metrics = check_quad_validity(corners, w, h)
-            if metrics["valid"] and metrics["score"] >= 0.45:
-                return corners, "FastViT-SA24 (Primary)", metrics
+            fastvit_corners = self.fastvit.detect(img)
+            fastvit_metrics = check_quad_validity(fastvit_corners, w, h)
         except Exception as e:
             logger.warning(f"FastViT detection exception: {e}")
+
+        # Check for Sub-Region / Inner-Box trapping:
+        # If FastViT detects a valid quad, verify if a larger enclosing document exists via LCNet or DeepLab
+        if fastvit_metrics and fastvit_metrics["valid"] and fastvit_metrics["score"] >= 0.45:
+            f_cov = fastvit_metrics.get("coverage", 0.0)
+            if f_cov < 0.60:
+                # Check LCNet for enclosing macro document
+                try:
+                    lc_corners = self.lcnet.detect(img)
+                    lc_metrics = check_quad_validity(lc_corners, w, h)
+                    lc_cov = lc_metrics.get("coverage", 0.0)
+                    if lc_metrics["valid"] and lc_metrics["score"] >= 0.80 and (lc_cov >= f_cov + 0.15):
+                        logger.info(f"Ensemble consensus: FastViT inner-box trap detected (cov {f_cov:.2f}). Upgraded to LCNet enclosing document (cov {lc_cov:.2f}).")
+                        return lc_corners, "LCNet100 (Macro Enclosing Consensus)", lc_metrics
+                except Exception as e:
+                    logger.debug(f"LCNet macro check exception: {e}")
+
+                # Check DeepLab for enclosing macro document
+                try:
+                    dl_corners = self.deeplab.detect(img)
+                    dl_metrics = check_quad_validity(dl_corners, w, h)
+                    dl_cov = dl_metrics.get("coverage", 0.0)
+                    if dl_metrics["valid"] and dl_metrics["score"] >= 0.80 and (dl_cov >= f_cov + 0.15):
+                        logger.info(f"Ensemble consensus: FastViT inner-box trap detected (cov {f_cov:.2f}). Upgraded to DeepLab enclosing document (cov {dl_cov:.2f}).")
+                        return dl_corners, "DeepLabV3 (Macro Enclosing Consensus)", dl_metrics
+                except Exception as e:
+                    logger.debug(f"DeepLab macro check exception: {e}")
+
+            return fastvit_corners, "FastViT-SA24 (Primary)", fastvit_metrics
 
         # Tier 2: Lightweight PP-LCNet Regressor (Catches non-square aspect ratios)
         try:

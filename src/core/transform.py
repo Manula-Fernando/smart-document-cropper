@@ -9,9 +9,9 @@ from typing import Tuple
 from .corner_detector import order_corners
 
 
-def expand_corners(corners: np.ndarray, margin_percent: float = 0.01) -> np.ndarray:
+def expand_corners(corners: np.ndarray, margin_percent: float = 0.02) -> np.ndarray:
     """
-    Expand detected quadrilateral outward by a percentage margin.
+    Expand detected quadrilateral outward by a percentage margin (default 2% = 0.02).
     Useful for ensuring no stamps, seals, or boundary signatures get clipped.
     """
     if margin_percent <= 0:
@@ -41,14 +41,18 @@ def perspective_warp(
     Args:
         image: Original BGR or RGB image.
         corners: 4 quadrilateral points (x, y).
-        safe_margin_percent: optional outward margin expansion (e.g. 0.01 for 1%).
+        safe_margin_percent: optional outward margin expansion (default 0.02 for 2%).
         interpolation: cv2 interpolation flag (INTER_LANCZOS4 for highest text clarity).
         
     Returns:
         (warped_image, homography_matrix)
     """
+    img_h, img_w = image.shape[:2]
     if safe_margin_percent > 0:
         corners = expand_corners(corners, safe_margin_percent)
+        # Clamp expanded corners within image boundaries
+        corners[:, 0] = np.clip(corners[:, 0], 0, img_w - 1)
+        corners[:, 1] = np.clip(corners[:, 1], 0, img_h - 1)
         
     ordered = order_corners(corners)
     tl, tr, br, bl = ordered

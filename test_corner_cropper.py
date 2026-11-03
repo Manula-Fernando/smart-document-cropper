@@ -42,7 +42,7 @@ def process_and_visualize(
     agent: DocumentCropperAgent,
     out_dir: Path,
     preferred_model: str = "auto",
-    safe_margin: float = 0.01,
+    safe_margin: float = 0.02,
     auto_rotate: bool = True
 ) -> dict:
     img_path = Path(img_path)
@@ -148,7 +148,7 @@ def main():
     parser.add_argument("--sample", "-s", type=int, default=None, help="Test N sample images from data/ directory")
     parser.add_argument("--all", "-a", action="store_true", help="Test all images in data/ directory")
     parser.add_argument("--model", "-m", type=str, default="auto", choices=["auto", "fastvit", "lcnet", "deeplab", "yolo", "classical"], help="Model strategy")
-    parser.add_argument("--margin", type=float, default=0.01, help="Safe border expansion margin (default 0.01 = 1%)")
+    parser.add_argument("--margin", type=float, default=0.02, help="Safe border expansion margin (default 0.02 = 2%)")
     parser.add_argument("--out", "-o", type=str, default="eval_results", help="Output directory for generated images")
     args = parser.parse_args()
 

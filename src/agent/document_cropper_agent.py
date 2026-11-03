@@ -130,7 +130,7 @@ class DocumentCropperAgent:
     def process(
         self,
         image_input: Union[str, Path, bytes, np.ndarray, Image.Image],
-        safe_margin_percent: float = 0.01,
+        safe_margin_percent: float = 0.02,
         preferred_model: Optional[str] = None,
         return_base64: bool = False,
         return_annotated_preview: bool = False,
@@ -141,7 +141,7 @@ class DocumentCropperAgent:
         
         Args:
             image_input: image path, bytes, base64, numpy array, or PIL image.
-            safe_margin_percent: outward padding (default 1% = 0.01).
+            safe_margin_percent: outward padding (default 2% = 0.02).
             preferred_model: "auto", "fastvit", "lcnet", "deeplab", "yolo", "classical".
             return_base64: whether to encode cropped image into base64 string.
             return_annotated_preview: whether to include an annotated image showing corner points.

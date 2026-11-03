@@ -20,7 +20,7 @@ agent = DocumentCropperAgent()
 def crop_document(
     image_path: str,
     output_path: Optional[str] = None,
-    safe_margin_percent: float = 0.01,
+    safe_margin_percent: float = 0.02,
     preferred_model: str = "auto"
 ) -> Dict[str, Any]:
     """
@@ -29,7 +29,7 @@ def crop_document(
     Args:
         image_path: Absolute or relative local path to the document image file (or base64 data URI).
         output_path: Optional path where cropped rectified image should be saved.
-        safe_margin_percent: Outward border margin expansion (default 0.01 = 1%).
+        safe_margin_percent: Outward border margin expansion (default 0.02 = 2%).
         preferred_model: Model selection ('auto', 'fastvit', 'lcnet', 'deeplab', 'yolo', 'classical').
         
     Returns:

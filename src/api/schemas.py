@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class CropRequestBase64(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image string or data URI")
-    safe_margin_percent: float = Field(0.01, description="Outward margin expansion (e.g. 0.01 for 1%)")
+    safe_margin_percent: float = Field(0.02, description="Outward margin expansion (e.g. 0.02 for 2%)")
     preferred_model: str = Field("auto", description="Model choice: auto, fastvit, lcnet, deeplab, yolo, classical")
     include_annotated_preview: bool = Field(False, description="Include visual preview with corners marked")
 
