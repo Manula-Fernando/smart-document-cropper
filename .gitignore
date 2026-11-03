@@ -36,6 +36,7 @@ eval_results/
 januki_test_results/
 data/
 januki test/
+fd_tst_imgs/
 *.log
 *.zip
 

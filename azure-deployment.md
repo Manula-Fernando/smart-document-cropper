@@ -111,3 +111,4 @@ field = cropper.extract_field(image_bytes_or_path, query="Total", is_key_value=T
 2. **CPU Optimization:** Keep ONNX Runtime thread count configured to match container vCPU count (already tuned automatically).
 3. **Payload Limits:** For large 20MB+ mobile camera images, client requests should upload multipart form files or compressed JPEGs.
 4. **CORS:** Configure specific allowed origins in `src/api/app.py` for frontend security.
+
