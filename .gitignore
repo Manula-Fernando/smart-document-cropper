@@ -33,7 +33,9 @@ wheels/
 # Scratch & Intermediate Testing Artifacts
 scratch/
 eval_results/
+januki_test_results/
 data/
+januki test/
 *.log
 
 # OS generated

@@ -104,17 +104,19 @@ def auto_orient_upright(img: Any) -> Tuple[np.ndarray, int]:
     """
     Automatically detects whether the document is upside-down or sideways (0°, 90°, 180°, 270°)
     and rotates it upright based on OCR confidence and orientation scoring.
-    Downsamples for blazing fast (<350ms) detection, then rotates the full-resolution image.
+    Downsamples to optimal 1200px preview resolution for fast (~1s) CPU detection while preserving
+    stroke fidelity of small fonts on receipts, doctor slips, and registration numbers.
     Applies illumination normalization to guarantee accuracy even on low-contrast/shadowed captures.
     """
     img = _ensure_image(img)
     h, w = img.shape[:2]
-    scale = 800.0 / max(h, w)
-    small = cv2.resize(img, (int(w * scale), int(h * scale)))
+    max_dim = max(h, w)
+    scale = min(1.0, 1200.0 / max_dim) if max_dim > 1200 else 1.0
+    small = cv2.resize(img, (int(w * scale), int(h * scale))) if scale < 1.0 else img
     norm_small = normalize_illumination(small)
 
     best_angle = 0
-    max_words = -1
+    best_score = -1
 
     for angle in [0, 90, 180, 270]:
         if angle == 0:
@@ -128,10 +130,12 @@ def auto_orient_upright(img: Any) -> Tuple[np.ndarray, int]:
 
         try:
             data = pytesseract.image_to_data(rot, config='--psm 6', output_type=pytesseract.Output.DICT)
-            # Count confident words
-            valid = sum(1 for i, w_txt in enumerate(data['text']) if len(w_txt.strip()) > 2 and data['conf'][i] > 30)
-            if valid > max_words:
-                max_words = valid
+            # Confident words: length > 2 and confidence > 30
+            valid_confs = [data['conf'][i] for i, w_txt in enumerate(data['text']) if len(w_txt.strip()) > 2 and data['conf'][i] > 30]
+            # Weighted score: number of words * 100 + sum of confidences
+            angle_score = len(valid_confs) * 100 + sum(valid_confs)
+            if angle_score > best_score:
+                best_score = angle_score
                 best_angle = angle
         except Exception:
             pass

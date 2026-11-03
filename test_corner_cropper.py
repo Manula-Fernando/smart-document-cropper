@@ -46,7 +46,7 @@ def process_and_visualize(
     auto_rotate: bool = True
 ) -> dict:
     img_path = Path(img_path)
-    base_name = img_path.stem
+    base_name = img_path.stem.strip()
     try:
         img = agent._load_image(img_path)
     except Exception as e:
