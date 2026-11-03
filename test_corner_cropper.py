@@ -87,6 +87,16 @@ def process_and_visualize(
     font_scale = max(0.8, max_dim / 1200.0)
     font_thickness = max(2, int(max_dim / 600))
 
+    # Top info banner drawn FIRST so corner markers and polylines are never obscured
+    banner_text = f"Route: {res['pipeline_stage']} | Score: {res['geometric_score']:.2f} | Latency: {res['latency_ms']:.1f}ms"
+    banner_h = max(45, int(45 * (max_dim / 1000.0)))
+    # Semi-transparent dark banner overlay
+    banner_overlay = vis.copy()
+    cv2.rectangle(banner_overlay, (0, 0), (w, banner_h), (20, 20, 20), -1)
+    cv2.addWeighted(banner_overlay, 0.75, vis, 0.25, 0, vis)
+    cv2.putText(vis, banner_text, (20, int(max(30, banner_h * 0.7))),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.9, (0, 255, 255), font_thickness)
+
     pts_int = corners.astype(np.int32)
     
     # Draw green polygon bounding quadrilateral
@@ -109,14 +119,6 @@ def process_and_visualize(
                     cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 0, 0), font_thickness + 2)
         cv2.putText(vis, coord_text, (int(tx), int(ty)),
                     cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), font_thickness)
-
-    # Top info banner
-    banner_text = f"Route: {res['pipeline_stage']} | Score: {res['geometric_score']:.2f} | Latency: {res['latency_ms']:.1f}ms"
-    # Background rectangle for banner readability
-    banner_h = int(60 * (max_dim / 1000.0))
-    cv2.rectangle(vis, (0, 0), (w, max(50, banner_h)), (20, 20, 20), -1)
-    cv2.putText(vis, banner_text, (20, int(max(35, banner_h * 0.7))),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), font_thickness)
 
     # 5. Save outputs
     out_dir.mkdir(parents=True, exist_ok=True)

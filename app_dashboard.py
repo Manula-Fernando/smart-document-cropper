@@ -222,6 +222,15 @@ with tab_scan:
         circle_radius = max(8, int(max_dim / 150))
         font_scale = max(0.8, max_dim / 1200.0)
         font_thickness = max(2, int(max_dim / 600))
+
+        # Top info banner drawn FIRST so corner markers and labels are never obscured
+        banner_text = f"Route: {res['pipeline_stage']} | Score: {res['geometric_score']*100:.1f}% | Latency: {res['latency_ms']:.1f}ms"
+        banner_h = max(45, int(45 * (max_dim / 1000.0)))
+        banner_overlay = vis_img.copy()
+        cv2.rectangle(banner_overlay, (0, 0), (w, banner_h), (20, 20, 20), -1)
+        cv2.addWeighted(banner_overlay, 0.75, vis_img, 0.25, 0, vis_img)
+        cv2.putText(vis_img, banner_text, (20, int(max(30, banner_h * 0.7))), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.9, (0, 255, 255), font_thickness)
+
         pts_int = corners.astype(np.int32)
         cv2.polylines(vis_img, [pts_int], isClosed=True, color=(0, 255, 0), thickness=line_thickness)
         
@@ -234,11 +243,6 @@ with tab_scan:
             ty = p[1] - 15 if p[1] > 40 else p[1] + 35
             cv2.putText(vis_img, coord_str, (int(tx), int(ty)), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 0, 0), font_thickness + 2)
             cv2.putText(vis_img, coord_str, (int(tx), int(ty)), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), font_thickness)
-
-        banner_text = f"Route: {res['pipeline_stage']} | Score: {res['geometric_score']*100:.1f}% | Latency: {res['latency_ms']:.1f}ms"
-        banner_h = int(60 * (max_dim / 1000.0))
-        cv2.rectangle(vis_img, (0, 0), (w, max(50, banner_h)), (20, 20, 20), -1)
-        cv2.putText(vis_img, banner_text, (20, int(max(35, banner_h * 0.7))), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), font_thickness)
 
         # Automatically save visual corner overlay and cropped output to eval_results/
         eval_dir = PROJECT_ROOT / "eval_results"

@@ -130,10 +130,10 @@ def auto_orient_upright(img: Any) -> Tuple[np.ndarray, int]:
 
         try:
             data = pytesseract.image_to_data(rot, config='--psm 6', output_type=pytesseract.Output.DICT)
-            # Confident words: length > 2 and confidence > 30
-            valid_confs = [data['conf'][i] for i, w_txt in enumerate(data['text']) if len(w_txt.strip()) > 2 and data['conf'][i] > 30]
-            # Weighted score: number of words * 100 + sum of confidences
-            angle_score = len(valid_confs) * 100 + sum(valid_confs)
+            # Filter words: length > 2 and confidence >= 45 (suppresses random OCR hallucinations on upside-down handwriting)
+            valid_confs = [data['conf'][i] for i, w_txt in enumerate(data['text']) if len(w_txt.strip()) > 2 and data['conf'][i] >= 45]
+            # Quadratic confidence weighting: heavily rewards high-confidence words (>70%) while suppressing noise
+            angle_score = len(valid_confs) * 100.0 + sum((c / 100.0) ** 2 * 100.0 for c in valid_confs)
             if angle_score > best_score:
                 best_score = angle_score
                 best_angle = angle
