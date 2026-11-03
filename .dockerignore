@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Datasets and local tests
+data/
+januki test/
+januki_test_results/
+eval_results/
+scratch/
+dist/
+*.zip
+*.log
+
+# Caches
+weights/.cache
+weights/jwalit_kyc
+.pytest_cache/

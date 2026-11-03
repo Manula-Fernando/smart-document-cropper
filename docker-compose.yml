@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  smart-document-cropper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smart-document-cropper:latest
+    container_name: smart-document-cropper
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - WEIGHTS_DIR=/app/weights
+      - TESSERACT_CMD=/usr/bin/tesseract
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

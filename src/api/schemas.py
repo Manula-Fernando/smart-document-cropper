@@ -9,6 +9,7 @@ class CropRequestBase64(BaseModel):
     image_base64: str = Field(..., description="Base64 encoded image string or data URI")
     safe_margin_percent: float = Field(0.02, description="Outward margin expansion (e.g. 0.02 for 2%)")
     preferred_model: str = Field("auto", description="Model choice: auto, fastvit, lcnet, deeplab, yolo, classical")
+    auto_orient: bool = Field(True, description="Automatically detect and orient document upright")
     include_annotated_preview: bool = Field(False, description="Include visual preview with corners marked")
 
 
@@ -48,6 +49,7 @@ class CropResponse(BaseModel):
     corners_normalized: List[List[float]]
     original_dimensions: DocumentDimensions
     cropped_dimensions: DocumentDimensions
+    rotation_applied_deg: Optional[int] = 0
     geometric_score: float
     coverage_ratio: float
     document_classification: DocumentClassification

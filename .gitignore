@@ -37,6 +37,7 @@ januki_test_results/
 data/
 januki test/
 *.log
+*.zip
 
 # OS generated
 .DS_Store

@@ -127,11 +127,31 @@ class DocumentCropperAgent:
         else:
             raise TypeError(f"Unsupported image input type: {type(image_input)}")
 
+    def crop(
+        self,
+        image_input: Union[str, Path, bytes, np.ndarray, Image.Image],
+        safe_margin_percent: float = 0.02,
+        auto_orient: bool = True,
+        preferred_model: str = "auto"
+    ) -> np.ndarray:
+        """
+        Convenience method: Crops, rectifies perspective, and auto-orients upright in 1 call.
+        Returns the rectified BGR NumPy array directly for downstream OCR / LLM ingestion.
+        """
+        img = self._load_image(image_input)
+        corners, _, _ = self.detector.detect(img, preferred_model=preferred_model)
+        cropped, _ = perspective_warp(img, corners, safe_margin_percent=safe_margin_percent)
+        if auto_orient and cropped is not None and cropped.size > 0:
+            from ..core.field_cropper import auto_orient_upright
+            cropped, _ = auto_orient_upright(cropped)
+        return cropped
+
     def process(
         self,
         image_input: Union[str, Path, bytes, np.ndarray, Image.Image],
         safe_margin_percent: float = 0.02,
         preferred_model: Optional[str] = None,
+        auto_orient: bool = False,
         return_base64: bool = False,
         return_annotated_preview: bool = False,
         output_save_path: Optional[str] = None
@@ -143,6 +163,7 @@ class DocumentCropperAgent:
             image_input: image path, bytes, base64, numpy array, or PIL image.
             safe_margin_percent: outward padding (default 2% = 0.02).
             preferred_model: "auto", "fastvit", "lcnet", "deeplab", "yolo", "classical".
+            auto_orient: whether to automatically detect and rotate upright.
             return_base64: whether to encode cropped image into base64 string.
             return_annotated_preview: whether to include an annotated image showing corner points.
             output_save_path: optional file path to save the cropped output.
@@ -161,13 +182,20 @@ class DocumentCropperAgent:
 
         # 2. Warp document to planar rectangle
         cropped, H_matrix = perspective_warp(img, corners, safe_margin_percent=safe_margin_percent)
+        
+        # 3. Optional auto-orientation upright
+        rotation_deg = 0
+        if auto_orient and cropped is not None and cropped.size > 0:
+            from ..core.field_cropper import auto_orient_upright
+            cropped, rotation_deg = auto_orient_upright(cropped)
+
         crop_h, crop_w = cropped.shape[:2]
 
-        # 3. Assess quality and document type
+        # 4. Assess quality and document type
         quality = assess_document_quality(cropped)
         doc_layout = classify_document_aspect_ratio(crop_w, crop_h)
 
-        # 4. Optional file saving
+        # 5. Optional file saving
         if output_save_path:
             out_p = Path(output_save_path)
             out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -184,6 +212,7 @@ class DocumentCropperAgent:
             "corners_normalized": [[float(round(pt[0] / w, 4)), float(round(pt[1] / h, 4))] for pt in corners],
             "original_dimensions": {"width": w, "height": h},
             "cropped_dimensions": {"width": crop_w, "height": crop_h},
+            "rotation_applied_deg": rotation_deg,
             "geometric_score": quad_metrics.get("score", 0.0),
             "coverage_ratio": quad_metrics.get("coverage", 0.0),
             "document_classification": doc_layout,

@@ -19,17 +19,26 @@ from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from difflib import SequenceMatcher
 
-# Configure Tesseract path
+# Configure Tesseract path across Windows, Linux, Docker, and Azure environments
+import shutil
 import pytesseract
-TESSERACT_PATHS = [
-    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-    r'C:\Users\ManulaF\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
-    'tesseract'
-]
-for p in TESSERACT_PATHS:
-    if os.path.exists(p):
-        pytesseract.pytesseract.tesseract_cmd = p
-        break
+
+tess_env = os.environ.get("TESSERACT_CMD")
+if tess_env and os.path.exists(tess_env):
+    pytesseract.pytesseract.tesseract_cmd = tess_env
+else:
+    TESSERACT_PATHS = [
+        shutil.which("tesseract"),
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\ManulaF\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        'tesseract'
+    ]
+    for p in TESSERACT_PATHS:
+        if p and os.path.exists(p):
+            pytesseract.pytesseract.tesseract_cmd = p
+            break
 
 
 def _ensure_image(img_input: Any) -> np.ndarray:

@@ -1,0 +1,21 @@
+# ==============================================================================
+# Enterprise Smart Document Cropper & Orientation Engine
+# Production CPU Dependencies (Windows, Linux, Docker, Azure App Service / Container Apps)
+# ==============================================================================
+
+# Core Math & Computer Vision
+numpy>=1.24.0,<2.0.0
+opencv-python-headless>=4.8.0.76
+Pillow>=9.5.0
+
+# ONNX Runtime Engine (Ultra-fast CPU inference for FastViT, LCNet, DeepLab, YOLO)
+onnxruntime>=1.15.0
+
+# OCR & Orientation Detection Engine
+pytesseract>=0.3.10
+
+# Enterprise REST API Microservice (FastAPI + High-performance ASGI Server)
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0.0
+python-multipart>=0.0.6

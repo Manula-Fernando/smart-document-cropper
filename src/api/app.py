@@ -57,12 +57,13 @@ async def crop_document_file(
     file: UploadFile = File(..., description="Uploaded document image (JPEG, JFIF, PNG, WebP, BMP, TIFF)"),
     safe_margin_percent: float = Form(0.02, description="Outward margin expansion (0.02 = 2%)"),
     preferred_model: str = Form("auto", description="auto, fastvit, lcnet, deeplab, yolo, classical"),
+    auto_orient: bool = Form(True, description="Automatically detect and orient document upright"),
     return_image_stream: bool = Form(False, description="If true, returns cropped JPEG image binary directly"),
     include_annotated_preview: bool = Form(False, description="Include preview with corners drawn")
 ):
     """
     Upload an image file to detect document corners and extract perspective-rectified crop.
-    Supports Sri Lankan NICs, Driving Licenses, Passports, Cheques, and Invoices.
+    Supports Sri Lankan NICs, Driving Licenses, Passports, Cheques, Invoices, and Doctor Prescriptions.
     """
     try:
         content = await file.read()
@@ -70,16 +71,13 @@ async def crop_document_file(
             content,
             safe_margin_percent=safe_margin_percent,
             preferred_model=preferred_model,
+            auto_orient=auto_orient,
             return_base64=not return_image_stream,
             return_annotated_preview=include_annotated_preview
         )
 
         if return_image_stream:
-            # Reconstruct cropped image from raw content
-            img = agent._load_image(content)
-            corners = np.array(res["corners_pixel"], dtype=np.float32)
-            from ..core.transform import perspective_warp
-            cropped, _ = perspective_warp(img, corners, safe_margin_percent=safe_margin_percent)
+            cropped = agent.crop(content, safe_margin_percent=safe_margin_percent, auto_orient=auto_orient, preferred_model=preferred_model)
             _, buf = cv2.imencode(".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
             return StreamingResponse(io.BytesIO(buf.tobytes()), media_type="image/jpeg")
 
@@ -99,6 +97,7 @@ async def crop_document_json(request: CropRequestBase64):
             request.image_base64,
             safe_margin_percent=request.safe_margin_percent,
             preferred_model=request.preferred_model,
+            auto_orient=request.auto_orient,
             return_base64=True,
             return_annotated_preview=request.include_annotated_preview
         )

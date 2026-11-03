@@ -16,7 +16,7 @@ import onnxruntime as ort
 logger = logging.getLogger("smart_document_cropper")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-WEIGHTS_DIR = PROJECT_ROOT / "weights"
+WEIGHTS_DIR = Path(os.environ.get("WEIGHTS_DIR", str(PROJECT_ROOT / "weights")))
 
 HF_REPO_ID = "7rplus/pagescan-weights"
 MODEL_FILES = {
